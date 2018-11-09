@@ -114,15 +114,13 @@ NSString *SUScheduledCheckIntervalKey = @"SUScheduledCheckInterval";
 
 - (NSString *)registrationCode {
 	if([[GPGMailBundle sharedInstance] hasActiveContract]) {
-		NSDictionary *contractInformation = [[GPGMailBundle  sharedInstance] contractInformation];
-		return [NSString stringWithFormat:@"Code: %@", contractInformation[@"ActivationCode"]];
+    return @"Code: N/A";
 	}
 	return @"";
 }
 - (NSString *)registrationDescription {
     if([[GPGMailBundle sharedInstance] hasActiveContract]) {
-        NSDictionary *contractInformation = [[GPGMailBundle  sharedInstance] contractInformation];
-        return [NSString stringWithFormat:@"Registered to: %@", contractInformation[@"ActivationEmail"]];
+      return @"Registered to: Open Source User";
     }
     NSNumber *remainingDays = [[self bundle] remainingTrialDays];
     return [NSString stringWithFormat:@"Trial Version%@", [remainingDays integerValue] <= 0 ? @" Expired" : [NSString stringWithFormat:@" (%@ days remaining)", remainingDays]];
