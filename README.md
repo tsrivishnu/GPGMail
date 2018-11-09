@@ -36,7 +36,8 @@ git clone https://github.com/GPGTools/GPGMail.git
 cd GPGMail
 ```
 
-#### Grab Dependencies
+#### Without Xcode
+##### Grab Dependencies
 
 In order to communicate with GnuPG we use our own Objective-C framework called [Libmacgpg](https://github.com/GPGTools/Libmacgpg).
 It's necessary to clone the Libmacgpg repository first, before building GPGMail.
@@ -47,15 +48,20 @@ git clone https://github.com/GPGTools/Libmacgpg.git
 cd ..
 ```
 
-#### Build
+##### Build
 ```bash
 make
 ```
 
-#### Install
+##### Install
 Copy Libmacgpg.framework from Dependencies/Libmacgpg/build/Release/ to ~/Library/Frameworks.
 
 After that copy the GPGMail.mailbundle file from build/Releases/GPGMail.mailbundle to ~/Libray/Mail/Bundles, re-start Mail.app and enjoy.
+
+#### With Xcode
+
+Open the Xcode project in xcode, run it and restart mail.
+It should be all that is needed.
 
 
 System Requirements
