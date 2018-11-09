@@ -1,13 +1,13 @@
 GPGMail
 =======
 
-GPGMail is a plugin for OS X's Mail.app, which let's you  
+GPGMail is a plugin for OS X's Mail.app, which let's you
 send and receive secure, OpenPGP encrypted and signed messages.
 
 Important
 -------
 
-GPGMail currently doesn't support macOS Sierra (10.12). We're actively working on it.
+This is a very simple fork that removes the requirement for activation code.
 Follow us on [Twitter](https://twitter.com/gpgtools) for updates.
 
 Updates
@@ -32,11 +32,12 @@ Build
 
 #### Clone the repository
 ```bash
-git clone https://github.com/GPGTools/GPGMail.git
+git clone --single-branch -b mojave https://github.com/tsrivishnu/GPGMail.git
 cd GPGMail
 ```
 
-#### Grab Dependencies
+#### Without Xcode
+##### Grab Dependencies
 
 In order to communicate with GnuPG we use our own Objective-C framework called [Libmacgpg](https://github.com/GPGTools/Libmacgpg).
 It's necessary to clone the Libmacgpg repository first, before building GPGMail.
@@ -47,15 +48,23 @@ git clone https://github.com/GPGTools/Libmacgpg.git
 cd ..
 ```
 
-#### Build
+##### Build
 ```bash
 make
 ```
 
-#### Install
+##### Install
 Copy Libmacgpg.framework from Dependencies/Libmacgpg/build/Release/ to ~/Library/Frameworks.
 
 After that copy the GPGMail.mailbundle file from build/Releases/GPGMail.mailbundle to ~/Libray/Mail/Bundles, re-start Mail.app and enjoy.
+
+#### With Xcode
+
+1. Give XCode `Full Disk Access` from `System Preferences > Security & Privacy > Privacy > Full Disk Access` and add XCode.
+    * Need this because the plugin needs to be installed into the Mail Apps bundles at `~/Library/Mail/Bundles`.
+2. Open the Xcode project in xcode, run it and restart mail.
+
+It should be all that is needed.
 
 
 System Requirements
