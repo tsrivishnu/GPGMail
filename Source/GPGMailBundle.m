@@ -210,7 +210,7 @@ decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
 
 + (void)MA_mailApplicationDidFinishLaunching:(id)object {
     [self MA_mailApplicationDidFinishLaunching:object];
-    
+
     [[GPGMailBundle sharedInstance] checkSupportContractAndStartWizardIfNecessary];
 }
 
@@ -829,7 +829,8 @@ static BOOL gpgMailWorks = NO;
 
 - (BOOL)hasActiveContract {
     NSDictionary *contractInformation = [self contractInformation];
-    return [contractInformation[@"Active"] boolValue];
+    /* return [contractInformation[@"Active"] boolValue]; */
+    return YES;
 }
 
 - (BOOL)hasActiveContractOrActiveTrial {
