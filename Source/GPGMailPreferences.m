@@ -89,7 +89,7 @@ NSString *SUScheduledCheckIntervalKey = @"SUScheduledCheckInterval";
 								NSUnderlineStyleAttributeName: @1};
 
 	return [[NSAttributedString alloc] initWithString:@"https://gpgtools.org" attributes:attributes];
-}	
+}
 
 
 - (NSString *)versionDescription {
@@ -99,12 +99,17 @@ NSString *SUScheduledCheckIntervalKey = @"SUScheduledCheckInterval";
 - (NSAttributedString *)buildNumberDescription {
 	NSString *string = [NSString stringWithFormat:@"Build: %@", [GPGMailBundle bundleVersion]];
 	NSDictionary *attributes = @{NSForegroundColorAttributeName: [NSColor grayColor], NSFontAttributeName: [NSFont systemFontOfSize:11]};
-	
+
 	return [[NSAttributedString alloc] initWithString:string attributes:attributes];
 }
 
 - (void)updateSupportPlanSection:(NSNotification *)notification {
-    [self setState:GPGMailPreferencesSupportPlanStateActiveState];
+    // Check if the outlets are set, otherwise it means that
+    // the preferences are not currently being presented and so
+    // there's no need to change the state.
+    if(_activationCodeTextField != nil) {
+        [self setState:GPGMailPreferencesSupportPlanStateActiveState];
+    }
 }
 
 - (NSString *)registrationCode {
@@ -140,24 +145,8 @@ NSString *SUScheduledCheckIntervalKey = @"SUScheduledCheckInterval";
 
 
 - (IBAction)openSupport:(id)sender {
-	// Find gpgPrefLauncher inside of GPGPreferences.prefPane.
-	NSString *path = @"/Library/PreferencePanes/GPGPreferences.prefPane/Contents/Resources/gpgPrefLauncher";
-	if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
-		struct passwd *pw = getpwuid(getuid());
-		if (pw) {
-			NSString *home = [NSString stringWithUTF8String:pw->pw_dir];
-			path = [home stringByAppendingPathComponent:path];
-		}
-		if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
-			path = nil;
-		}
-	}
-	
-	BOOL success = NO;
-	if (path) {
-		success = [GPGTask launchGeneralTask:path withArguments:@[@"report"] wait:YES];
-	}
-	
+	BOOL success = [GPGTask showGPGSuitePreferencesTab:@"report" arguments:nil];
+
 	if (!success) {
 		// Alternative if GPGPreferences could not be launched.
 		[[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://gpgtools.tenderapp.com/"]];
@@ -189,7 +178,7 @@ NSString *SUScheduledCheckIntervalKey = @"SUScheduledCheckInterval";
 - (void)setState:(GPGMailPreferencesSupportPlanState)state {
     if (_state != state) {
         _state = state;
-        
+
         _activationCodeTextField.hidden = (state == GPGMailPreferencesSupportPlanStateTrialState);
         _reportProblemButton.hidden = (state == GPGMailPreferencesSupportPlanStateTrialState);
         _activateButton.hidden = (state == GPGMailPreferencesSupportPlanStateActiveState);
@@ -259,9 +248,9 @@ NSString *SUScheduledCheckIntervalKey = @"SUScheduledCheckInterval";
 		NSArray *accounts = (NSArray *)[MFMailAccount mailAccounts];
 		for (id account in accounts) {
 			if ([account respondsToSelector:@selector(storeDraftsOnServer)] && [account storeDraftsOnServer]) {
-				
+
                 NSWindow *window = [[(MailApp *)[NSClassFromString(@"MailApp") sharedApplication] preferencesController] window];
-				
+
 				if (floor(NSAppKitVersionNumber) >= NSAppKitVersionNumber10_9) {
 					NSAlert *unencryptedReplyAlert = [NSAlert new];
 					unencryptedReplyAlert.messageText = localized(@"DISABLE_ENCRYPT_DRAFTS_TITLE");
@@ -321,13 +310,13 @@ NSString *SUScheduledCheckIntervalKey = @"SUScheduledCheckInterval";
 @implementation GMSpecialBox
 - (void)showSpecial {
 	return;
-//	if (displayed || working) return;	
+//	if (displayed || working) return;
 //	working = YES;
 //
 //	if (!viewPositions) {
 //		viewPositions = [[NSMapTable alloc] initWithKeyOptions:NSMapTableZeroingWeakMemory valueOptions:NSMapTableStrongMemory capacity:10];
 //	}
-//	
+//
 //	NSSize size = self.bounds.size;
 //	srandom((unsigned int)time(NULL));
 //
@@ -337,35 +326,35 @@ NSString *SUScheduledCheckIntervalKey = @"SUScheduledCheckInterval";
 //	webView.UIDelegate = self;
 //	webView.editingDelegate = self;
 //
-//	
+//
 //	[NSAnimationContext beginGrouping];
 //	[[NSAnimationContext currentContext] setDuration:2.0f];
 //	[NSAnimationContext currentContext].completionHandler = ^{
 //		[self addSubview:webView];
-//        
+//
 //		[[webView mainFrame] loadRequest:[NSURLRequest requestWithURL:[[GPGMailBundle bundle] URLForResource:@"Special" withExtension:@"html"]]];
 //		displayed = YES;
 //		working = NO;
 //	};
-//	
+//
 //	for (NSView *view in [self.contentView subviews]) {
 //		NSRect frame = view.frame;
-//		
+//
 //		if (!positionsFilled) {
 //			[viewPositions setObject:[NSValue valueWithRect:frame] forKey:view];
 //		}
-//		
-//		long angle = (random() % 360);	
-//		
+//
+//		long angle = (random() % 360);
+//
 //		double x = (size.width + frame.size.width) / 2 * sin(angle * M_PI / 180) * 1.5;
 //		double y = (size.height + frame.size.height) / 2 * cos(angle * M_PI / 180) * 1.5;
-//		
+//
 //		x += (size.width - frame.size.width) / 2;
 //		y += (size.height - frame.size.height) / 2;
-//		
+//
 //		frame.origin.x = x;
 //		frame.origin.y = y;
-//		
+//
 //		[(NSView *)[view animator] setFrame:frame];
 //	}
 //	positionsFilled = YES;
@@ -386,7 +375,7 @@ NSString *SUScheduledCheckIntervalKey = @"SUScheduledCheckInterval";
 - (void)keyDown:(NSEvent *)event {
 	unsigned short keySequence[] = {126, 125, 47, 5, 35, 5, 17, 31, 31, 37, 1, USHRT_MAX};
 	static int index = 0;
-	
+
 	if (!displayed) {
 		if (keySequence[index] == USHRT_MAX) {
 			[super keyDown:event];
@@ -402,7 +391,7 @@ NSString *SUScheduledCheckIntervalKey = @"SUScheduledCheckInterval";
 			return;
 		}
 		if (keySequence[++index] != USHRT_MAX) return;
-		
+
 		index = 0;
 		[self showSpecial];
 	} else {

@@ -33,6 +33,8 @@
 #import "MCMessageGenerator.h"
 #import "MCMimePart.h"
 #import "NSObject+LPDynamicIvars.h"
+#import "GPGConstants.h"
+#import "GMComposeMessagePreferredSecurityProperties.h"
 
 //#import "GPGKey.h"
 #import "EAEmailAddressParser.h"
@@ -49,6 +51,7 @@
 @class GPGKey;
 
 const static NSString *kMCMessageGeneratorSigningKeyKey = @"MCMessageGeneratorSigningKey";
+NSString * const kMCMessageGeneratorSecurityMethodKey = @"kMCMessageGeneratorSecurityMethod";
 
 @implementation MCMessageGenerator_GPGMail
 
@@ -61,7 +64,7 @@ const static NSString *kMCMessageGeneratorSigningKeyKey = @"MCMessageGeneratorSi
 	// It's crucial that the first two part headers are identical, otherwise we're simply dealing
 	// with a normal multipart message and would remove too many headers and thus mangle the original
 	// message.
-	
+
 	NSData *newData = [self MA_newDataForMimePart:mimePart withPartData:partData];
     if(![[GPGMailBundle sharedInstance] hasActiveContractOrActiveTrial]) {
         return newData;
@@ -74,11 +77,11 @@ const static NSString *kMCMessageGeneratorSigningKeyKey = @"MCMessageGeneratorSi
 	// TODO: Figure out what replaces encryptsOutput and uncomment following line.
 //    if([mimePart parentPart] || ![[self getIvar:@"IsDraft"] boolValue] || !(BOOL)[(GM_CAST_CLASS(MCMessageGenerator *, id))self encryptsOutput])
 //		return newData;
-	
+
 	[self removeIvar:@"IsDraft"];
-	
+
 	NSData *NL = [@"\n\n" dataUsingEncoding:NSUTF8StringEncoding];
-	
+
 	NSUInteger messageSeparatorsFound = 0;
 	NSData *firstHeader, *secondHeader = nil;
 	NSRange firstHeaderEndRange = [newData rangeOfData:NL options:0 range:NSMakeRange(0, [newData length])];
@@ -105,62 +108,56 @@ const static NSString *kMCMessageGeneratorSigningKeyKey = @"MCMessageGeneratorSi
     if(![identitiy isKindOfClass:[GPGKey class]]) {
         return [self MASetSigningIdentity:identitiy];
     }
-    
+
     [self setIvar:kMCMessageGeneratorSigningKeyKey value:identitiy];
 }
 
 - (id)MA_newOutgoingMessageFromTopLevelMimePart:(MCMimePart *)topLevelPart topLevelHeaders:(MCMutableMessageHeaders *)topLevelHeaders withPartData:(NSMapTable *)partData {
-    if(![[GPGMailBundle sharedInstance] hasActiveContractOrActiveTrial]) {
+    // This method is already used when a received message is also used
+    // from +[Library_GPGMail GMLocalMessageDataForMessage:topLevelPart:error].
+    // In that case `securityMethod` is not set on the writer and the native Mail
+    // method can be called.
+    if(![[GPGMailBundle sharedInstance] hasActiveContractOrActiveTrial] || ![self ivarExists:kMCMessageGeneratorSecurityMethodKey]) {
         return [self MA_newOutgoingMessageFromTopLevelMimePart:topLevelPart topLevelHeaders:topLevelHeaders withPartData:partData];
     }
     if(!topLevelHeaders) {
         topLevelHeaders = [MCMutableMessageHeaders new];
     }
-    // If neither signingIdentity nor encryptionCertificates contain any GPGKey instance
-    // the message is either not to cryptographically protected or it should be cryptographically protected
-    // using S/MIME.
-    // In either case, the original mail method is invoked.
-    NSArray *encryptionCertificates = [mailself encryptionCertificates];
-    id signingIdentity = [mailself getIvar:kMCMessageGeneratorSigningKeyKey];
-    
-    BOOL messageShouldBeProtectedUsingPGP = NO;
-    if([signingIdentity isKindOfClass:[GPGKey class]]) {
-        messageShouldBeProtectedUsingPGP = YES;
-    }
-    for(id certificate in encryptionCertificates) {
-        if([certificate isKindOfClass:[NSArray class]]) {
-            for(id element in certificate) {
-                if([element isKindOfClass:[GPGKey class]]) {
-                    messageShouldBeProtectedUsingPGP = YES;
-                }
-            }
+    GPGMAIL_SECURITY_METHOD securityMethod = (GPGMAIL_SECURITY_METHOD)[[self getIvar:kMCMessageGeneratorSecurityMethodKey] unsignedIntegerValue];
+    NSMutableArray *encryptionCertificates = [mailself.encryptionCertificates count] != 0 ? [NSMutableArray new] : nil;
+    // Remove the reply-to dummy keys.
+    for(id key in mailself.encryptionCertificates) {
+        if([key isKindOfClass:[GMComposeMessageReplyToDummyKey class]]) {
+            continue;
         }
-        else if([certificate isKindOfClass:[GPGKey class]]) {
-            messageShouldBeProtectedUsingPGP = YES;
-        }
+        [encryptionCertificates addObject:key];
     }
-    if(!messageShouldBeProtectedUsingPGP) {
+    mailself.encryptionCertificates = encryptionCertificates;
+
+    if(securityMethod != GPGMAIL_SECURITY_METHOD_OPENPGP) {
         return [self MA_newOutgoingMessageFromTopLevelMimePart:topLevelPart topLevelHeaders:topLevelHeaders withPartData:partData];
     }
-    
+
+    id signingIdentity = [mailself getIvar:kMCMessageGeneratorSigningKeyKey];
+
     // Since the message is supposed to be protected using PGP, the first step is to sign it.
     MCActivityMonitor *activityMonitor = [MCActivityMonitor currentMonitor];
     if([activityMonitor shouldCancel]) {
         return nil;
     }
-    
+
     MCMimePart *parentMimePart = topLevelPart;
     if(signingIdentity) {
         NSString *senderAddress = [EAEmailAddressParser rawAddressFromFullAddress:[topLevelHeaders firstAddressForKey:@"resent-from"]];
         if(!senderAddress) {
             senderAddress = [EAEmailAddressParser rawAddressFromFullAddress:[topLevelHeaders firstAddressForKey:@"from"]];
         }
-        
+
         NSMutableData *newData = [mailself _newDataForMimePart:topLevelPart withPartData:partData];
         if(!newData || [activityMonitor shouldCancel]) {
             return nil;
         }
-        
+
         NSData *signatureData = nil;
         MCMimePart *multipartSignedMimePart = [(MimePart_GPGMail *)topLevelPart newSignedPartWithData:newData sender:senderAddress signingKey:signingIdentity signatureData:&signatureData];
         MCMimePart *signaturePart = [[multipartSignedMimePart firstChildPart] nextSiblingPart];
@@ -170,7 +167,7 @@ const static NSString *kMCMessageGeneratorSigningKeyKey = @"MCMessageGeneratorSi
         [partData setObject:signatureData forKey:signaturePart];
         parentMimePart = multipartSignedMimePart;
     }
-    
+
     if(encryptionCertificates && [encryptionCertificates count]) {
         NSMutableData *newData = [mailself _newDataForMimePart:parentMimePart withPartData:partData];
         if(!newData || [activityMonitor shouldCancel]) {
@@ -188,18 +185,18 @@ const static NSString *kMCMessageGeneratorSigningKeyKey = @"MCMessageGeneratorSi
         }
         parentMimePart = multipartEncryptedMimePart;
     }
-    
+
     // Since the protection using PGP is already taken care of, Mail can be instructed to just take the information
     // as is and not run any cryptographic protection itself on the passed in mime parts and data.
     // In order to make sure of that, the `signingIdentity` and `encryptionCertificates` are niled out.
-    
+
     // Since _signingIdentity is a struct, it's not possible to use setValue:forKey:
     [mailself setSigningIdentity:nil];
     mailself.encryptionCertificates = nil;
-    
+
     // Last but not least, let Mail create the message.
     id outgoingMessage = [self MA_newOutgoingMessageFromTopLevelMimePart:parentMimePart topLevelHeaders:topLevelHeaders withPartData:partData];
-    
+
     // In case of Mail-Act-On, this method is called a few times in order to create
     // temporary outgoing messages.
     // Since the encryption certificates were reset, in order to prevent Mail from encrypting
@@ -207,24 +204,24 @@ const static NSString *kMCMessageGeneratorSigningKeyKey = @"MCMessageGeneratorSi
     // so it's possible for future calls of this method, to have the contents encrypted as well.
     [mailself setSigningIdentity:signingIdentity];
     mailself.encryptionCertificates = encryptionCertificates;
-    
+
     return outgoingMessage;
     /*
-    
+
     if(!topLevelHeaders) {
         topLevelHeaders = [MCMutableMessageHeaders new];
     }
-    
+
     // Create a new empty outgoing message.
     MCOutgoingMessage *outgoingMessage = [mailself _newOutgoingMessage];
     MCMimeBody *mimeBody = [outgoingMessage mimeBody];
     NSMutableData *bodyData = [NSMutableData data];
-    
+
     MCActivityMonitor *activityMonitor = [MCActivityMonitor currentMonitor];
     [outgoingMessage setMessageFlags:0x1 mask:0x386ffbfffdf];
     [outgoingMessage setMutableHeaders:topLevelHeaders];
     [outgoingMessage setRawData:bodyData];
-    
+
     NSString *senderAddress = [EAEmailAddressParser rawAddressFromFullAddress:[topLevelHeaders firstAddressForKey:@"resent-from"]];
     if(!senderAddress) {
         [EAEmailAddressParser rawAddressFromFullAddress:[topLevelHeaders firstAddressForKey:@"from"]];
@@ -249,12 +246,12 @@ const static NSString *kMCMessageGeneratorSigningKeyKey = @"MCMessageGeneratorSi
             }
         }
     }
-    
+
     if(!outgoingMessage) {
         // We could bail out early here. Makes the rest of the code more readable.
         return nil;
     }
-     
+
     NSArray *encryptionCertificates = [self encryptionCertificates];
     if(encrpytionCertificates) {
         MCMimePart *parentMimePart = multipartSignedPart != nil ? multipartSignedPart : topLevelMimePart;
@@ -269,13 +266,13 @@ const static NSString *kMCMessageGeneratorSigningKeyKey = @"MCMessageGeneratorSi
         }
     }
     if(topLevelHeaders && outgoingMessage) {
-        
+
     }
     */
     /*
     if(!)
-    
-    
+
+
     void * -[MCMessageGenerator _newOutgoingMessageFromTopLevelMimePart:topLevelHeaders:withPartData:](void * self, void * _cmd, void * arg2, void * arg3, void * arg4) {
         rsi = _cmd;
         r15 = self;
@@ -511,10 +508,10 @@ const static NSString *kMCMessageGeneratorSigningKeyKey = @"MCMessageGeneratorSi
         }
         r12 = 0x0;
         if (r13 == 0x0) goto loc_4825e;
-        
+
     loc_48221:
         if (([r15 _encodeDataForMimePart:var_48 withPartData:var_50] == 0x0) || ([var_60 shouldCancel] != 0x0)) goto loc_48252;
-        
+
     loc_482be:
         var_78 = _objc_msgSend;
         r13 = _objc_msgSend;
@@ -526,7 +523,7 @@ const static NSString *kMCMessageGeneratorSigningKeyKey = @"MCMessageGeneratorSi
         rax = [r12 appendData:r15];
         rcx = r12;
         if ([var_70 appendDataForMimePart:var_48 toData:rcx withPartData:var_50] == 0x0) goto loc_4847a;
-        
+
     loc_48354:
         var_A8 = r15;
         var_88 = r14;
@@ -563,7 +560,7 @@ const static NSString *kMCMessageGeneratorSigningKeyKey = @"MCMessageGeneratorSi
         rax = [var_A8 release];
         r12 = var_78;
         r14 = var_88;
-        
+
     loc_4825e:
         rbx = _objc_release;
         rax = [var_98 release];
@@ -585,27 +582,27 @@ const static NSString *kMCMessageGeneratorSigningKeyKey = @"MCMessageGeneratorSi
         rsp = rsp + 0xb8;
         rbp = stack[2047];
         return rax;
-        
+
     loc_4847a:
         rbx = _objc_release;
         rax = [var_78 release];
         rax = [r15 release];
         r12 = 0x0;
-        
+
     loc_48252:
         rax = [r13 release];
     }
-    
-    
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+
+
+
 
     id outgoingMessage = [self MA_newOutgoingMessageFromTopLevelMimePart:topLevelPart topLevelHeaders:topLevelHeaders withPartData:partData];
-    
+
     return outgoingMessage;
 */
 }

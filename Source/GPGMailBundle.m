@@ -210,7 +210,7 @@ decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
 
 + (void)MA_mailApplicationDidFinishLaunching:(id)object {
     [self MA_mailApplicationDidFinishLaunching:object];
-    
+
     [[GPGMailBundle sharedInstance] checkSupportContractAndStartWizardIfNecessary];
 }
 
@@ -296,6 +296,12 @@ static NSString * const kExpiredCheckKey = @"__gme3__";
 NSString * const kGMAllowDecryptionOfDangerousMessagesMissingMDCKey = @"GMAllowDecryptionOfDangerousMessagesMissingMDC";
 NSString * const kGMShouldNotConvertPGPPartitionedMessagesKey = @"GMShouldNotConvertPGPPartitionedMessagesKey";
 
+NSString * const kGMSupportPlanAutomaticActivationActivationCodeKey = @"SupportPlanActivationCode";
+NSString * const kGMSupportPlanAutomaticActivationActivationEmailKey = @"SupportPlanActivationEmail";
+
+NSString * const kGMSupportPlanInformationActivationCodeKey = @"ActivationCode";
+NSString * const kGMSupportPlanInformationActivationEmailKey = @"ActivationEmail";
+
 int GPGMailLoggingLevel = 0;
 static BOOL gpgMailWorks = NO;
 
@@ -311,29 +317,29 @@ static BOOL gpgMailWorks = NO;
     NSArray *libraryPaths = NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSAllDomainsMask, YES);
     NSString *bundlesPath = [@"Mail" stringByAppendingPathComponent:@"Bundles"];
     NSString *bundleName = @"GPGMail.mailbundle";
-    
+
     NSMutableArray *installations = [NSMutableArray array];
-    
+
     NSFileManager *fileManager = [[NSFileManager alloc] init];
-    
+
     for(NSString *libraryPath in libraryPaths) {
         NSString *bundlePath = [libraryPath stringByAppendingPathComponent:[bundlesPath stringByAppendingPathComponent:bundleName]];
         if([fileManager fileExistsAtPath:bundlePath])
             [installations addObject:bundlePath];
     }
-    
+
     return (NSArray *)installations;
 }
 
 + (void)showMultipleInstallationsErrorAndExit:(NSArray *)installations {
     NSAlert *errorModal = [[NSAlert alloc] init];
-    
+
     errorModal.messageText = GMLocalizedString(@"GPGMAIL_MULTIPLE_INSTALLATIONS_TITLE");
     errorModal.informativeText = [NSString stringWithFormat:GMLocalizedString(@"GPGMAIL_MULTIPLE_INSTALLATIONS_MESSAGE"), [installations componentsJoinedByString:@"\n\n"]];
     [errorModal addButtonWithTitle:GMLocalizedString(@"GPGMAIL_MULTIPLE_INSTALLATIONS_BUTTON")];
     [errorModal runModal];
-    
-    
+
+
     // It's not at all a good idea to use exit and kill the app,
     // but in this case it's alright because otherwise the user would experience a
     // crash anyway.
@@ -343,18 +349,18 @@ static BOOL gpgMailWorks = NO;
 
 #pragma mark Init, dealloc etc.
 
-+ (void)initialize {    
++ (void)initialize {
     // Make sure the initializer is only run once.
     // Usually is run, for every class inheriting from
     // GPGMailBundle.
     if(self != [GPGMailBundle class])
         return;
-    
+
     if (![GPGController class]) {
 		NSRunAlertPanel([self localizedStringForKey:@"LIBMACGPG_NOT_FOUND_TITLE"], [self localizedStringForKey:@"LIBMACGPG_NOT_FOUND_MESSAGE"], nil, nil, nil);
 		return;
 	}
-    
+
     /* Check the validity of the code signature.
      * Disable for the time being, since Info.plist is part of the code signature
      * and if a new version of OS X is released, and the UUID is added, this check
@@ -365,7 +371,7 @@ static BOOL gpgMailWorks = NO;
 //		NSRunAlertPanel([self localizedStringForKey:@"CODE_SIGN_ERROR_TITLE"], [self localizedStringForKey:@"CODE_SIGN_ERROR_MESSAGE"], nil, nil, nil);
 //        return;
 //    }
-    
+
     // If one happens to have for any reason (like for example installed GPGMail
     // from the installer, which will reside in /Library and compiled with XCode
     // which will reside in ~/Library) two GPGMail.mailbundle's,
@@ -375,7 +381,7 @@ static BOOL gpgMailWorks = NO;
         [self showMultipleInstallationsErrorAndExit:installations];
         return;
     }
-    
+
     Class mvMailBundleClass = NSClassFromString(@"MVMailBundle");
     // If this class is not available that means Mail.app
     // doesn't allow plugins anymore. Fingers crossed that this
@@ -387,52 +393,52 @@ static BOOL gpgMailWorks = NO;
 #pragma GCC diagnostic ignored "-Wdeprecated"
     class_setSuperclass([self class], mvMailBundleClass);
 #pragma GCC diagnostic pop
-    
+
     // Initialize the bundle by swizzling methods, loading keys, ...
     GPGMailBundle *instance = [GPGMailBundle sharedInstance];
-    
+
     [[((MVMailBundle *)self) class] registerBundle];             // To force registering composeAccessoryView and preferences
 }
 
 - (id)init {
 	if (self = [super init]) {
 		NSLog(@"Loaded GPGMail %@", [self version]);
-        
+
         NSBundle *myBundle = [GPGMailBundle bundle];
-        
+
         // Load all necessary images.
         [self _loadImages];
-        
-        
+
+
         // Set domain and register the main defaults.
         GPGOptions *options = [GPGOptions sharedOptions];
         options.standardDomain = [GPGMailBundle bundle].bundleIdentifier;
 		NSDictionary *defaultsDictionary = [NSDictionary dictionaryWithContentsOfFile:[myBundle pathForResource:@"GPGMailBundle" ofType:@"defaults"]];
         [(id)options registerDefaults:defaultsDictionary];
-        
+
         if (![options boolForKey:@"DefaultsLoaded"]) {
             NSRunAlertPanel([GPGMailBundle localizedStringForKey:@"NO_DEFAULTS_TITLE"], [GPGMailBundle localizedStringForKey:@"NO_DEFAULTS_MESSAGE"], nil, nil, nil);
             NSLog(@"GPGMailBundle.defaults can't be loaded!");
         }
-        
-        
+
+
         // Configure the logging level.
         GPGMailLoggingLevel = (int)[[GPGOptions sharedOptions] integerForKey:@"DebugLog"];
         DebugLog(@"Debug Log enabled: %@", [[GPGOptions sharedOptions] integerForKey:@"DebugLog"] > 0 ? @"YES" : @"NO");
         //GPGMailLoggingLevel = 1;
         _keyManager = [[GMKeyManager alloc] init];
-        
+
         // Initiate the Message Rules Applier.
         _messageRulesApplier = [[GMMessageRulesApplier alloc] init];
-        
+
         [self setAllowDecryptionOfPotentiallyDangerousMessagesWithoutMDC:[[[GPGOptions sharedOptions] valueForKey:@"AllowDecryptionOfPotentiallyDangerousMessagesWithoutMDC"] boolValue]];
         [self setShouldNotConvertPGPPartitionedMessages:[[[GPGOptions sharedOptions] valueForKey:@"ShouldNotConvertPGPPartitionedMessages"] boolValue]];
         // Start the GPG checker.
         [self startGPGChecker];
-        
+
         // Specify that a count exists for signing.
         accountExistsForSigning = YES;
-        
+
         _messageBodyDataLoadingQueue = [[NSOperationQueue alloc] init];
         _messageBodyDataLoadingQueue.maxConcurrentOperationCount = 1;
         _messageBodyDataLoadingQueue.name = @"org.gpgtools.gpgmail.messageBodyLoadingQueue";
@@ -442,7 +448,7 @@ static BOOL gpgMailWorks = NO;
         [GMCodeInjector injectUsingMethodPrefix:GPGMailSwizzledMethodPrefix];
 
 	}
-    
+
 	return self;
 }
 
@@ -475,7 +481,7 @@ static BOOL gpgMailWorks = NO;
     // We need to load images and name them, because all images are searched by their name; as they are not located in the main bundle,
 	// +[NSImage imageNamed:] does not find them.
 	NSBundle *myBundle = [GPGMailBundle bundle];
-    
+
     NSArray *bundleImageNames = @[@"GPGMail",
                                   @"ValidBadge",
                                   @"InvalidBadge",
@@ -486,13 +492,13 @@ static BOOL gpgMailWorks = NO;
                                   @"certificate",
                                   @"encryption",
                                   @"CertSmallStd",
-                                  @"CertSmallStd_Invalid", 
+                                  @"CertSmallStd_Invalid",
                                   @"CertLargeStd",
                                   @"CertLargeNotTrusted",
                                   @"SymmetricEncryptionOn",
                                   @"SymmetricEncryptionOff"];
     NSMutableArray *bundleImages = [[NSMutableArray alloc] initWithCapacity:[bundleImageNames count]];
-    
+
     for (NSString *name in bundleImageNames) {
         NSImage *image = [[NSImage alloc] initByReferencingFile:[myBundle pathForImageResource:name]];
 
@@ -505,9 +511,9 @@ static BOOL gpgMailWorks = NO;
         [image setName:name];
         [bundleImages addObject:image];
     }
-    
+
     _bundleImages = bundleImages;
-    
+
 }
 
 #pragma mark Check and status of GPG.
@@ -517,7 +523,7 @@ static BOOL gpgMailWorks = NO;
     [self checkGPG];
     _checkGPGTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0));
     dispatch_source_set_timer(_checkGPGTimer, dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC), 60 * NSEC_PER_SEC, 10 * NSEC_PER_SEC);
-    
+
     __block typeof(self) __unsafe_unretained weakSelf = self;
     dispatch_source_set_event_handler(_checkGPGTimer, ^{
         [weakSelf checkGPG];
@@ -535,13 +541,13 @@ static BOOL gpgMailWorks = NO;
             DebugLog(@"DEBUG: checkGPG - GPGErrorConfigurationError");
         case GPGErrorNoError: {
             static dispatch_once_t onceToken;
-            
+
             GMKeyManager * __weak weakKeyManager = self->_keyManager;
-            
+
             dispatch_once(&onceToken, ^{
                 [weakKeyManager scheduleInitialKeyUpdate];
             });
-            
+
             gpgMailWorks = YES;
             return YES;
         }
@@ -566,61 +572,61 @@ static BOOL gpgMailWorks = NO;
 
 - (NSSet *)allGPGKeys {
     if (!gpgMailWorks) return nil;
-    
+
     return [_keyManager allKeys];
 }
 
 - (GPGKey *)anyPersonalPublicKeyWithPreferenceAddress:(NSString *)address {
     if(!gpgMailWorks) return nil;
-    
+
     return [_keyManager anyPersonalPublicKeyWithPreferenceAddress:address];
 }
 
 - (GPGKey *)secretGPGKeyForKeyID:(NSString *)keyID {
     if (!gpgMailWorks) return nil;
-    
+
     return [_keyManager secretKeyForKeyID:keyID includeDisabled:NO];
 }
 
 - (GPGKey *)secretGPGKeyForKeyID:(NSString *)keyID includeDisabled:(BOOL)includeDisabled {
     if (!gpgMailWorks) return nil;
-    
+
     return [_keyManager secretKeyForKeyID:keyID includeDisabled:includeDisabled];
 }
 
 - (NSMutableSet *)signingKeyListForAddress:(NSString *)sender {
     if (!gpgMailWorks) return nil;
-    
+
     return [_keyManager signingKeyListForAddress:[sender gpgNormalizedEmail]];
 }
 
 - (NSMutableSet *)publicKeyListForAddresses:(NSArray *)recipients {
     if (!gpgMailWorks) return nil;
-    
+
     return [_keyManager publicKeyListForAddresses:recipients];
 }
 
 - (BOOL)canSignMessagesFromAddress:(NSString *)address {
     if (!gpgMailWorks) return NO;
-    
+
     return [_keyManager secretKeyExistsForAddress:[address gpgNormalizedEmail]];
 }
 
 - (BOOL)canEncryptMessagesToAddress:(NSString *)address {
     if (!gpgMailWorks) return NO;
-    
+
     return [_keyManager publicKeyExistsForAddress:[address gpgNormalizedEmail]];
 }
 
 - (GPGKey *)preferredGPGKeyForSigning {
     if (!gpgMailWorks) return nil;
-    
+
     return [_keyManager findKeyByHint:[[GPGOptions sharedOptions] valueInGPGConfForKey:@"default-key"] onlySecret:YES];
 }
 
 - (GPGKey *)keyForFingerprint:(NSString *)fingerprint {
     if (!gpgMailWorks) return nil;
-    
+
     return [_keyManager keyForFingerprint:fingerprint];
 }
 
@@ -633,14 +639,21 @@ static BOOL gpgMailWorks = NO;
 #pragma mark Localization Helper
 
 + (NSString *)localizedStringForKey:(NSString *)key {
-    NSBundle *gmBundle = [GPGMailBundle bundle];
-    NSString *localizedString = NSLocalizedStringFromTableInBundle(key, @"GPGMail", gmBundle, @"");
-    // Translation found, out of here.
-    if(![localizedString isEqualToString:key])
-        return localizedString;
-    
-    NSBundle *englishLanguageBundle = [NSBundle bundleWithPath:[gmBundle pathForResource:@"en" ofType:@"lproj"]];
-    return [englishLanguageBundle localizedStringForKey:key value:@"" table:@"GPGMail"];
+    static dispatch_once_t onceToken;
+    static NSBundle *gmBundle = nil, *englishBundle = nil;
+    dispatch_once(&onceToken, ^{
+        gmBundle = [GPGMailBundle bundle];
+        englishBundle = [NSBundle bundleWithPath:[gmBundle pathForResource:@"en" ofType:@"lproj"]];
+    });
+
+    NSString *notFoundValue = @"~#*?*#~";
+    NSString *localizedString = [gmBundle localizedStringForKey:key value:notFoundValue table:@"GPGMail"];
+    if (localizedString == notFoundValue) {
+        // No translation found. Use the english string.
+        localizedString = [englishBundle localizedStringForKey:key value:nil table:@"GPGMail"];
+    }
+
+    return localizedString;
 }
 
 #pragma mark General Infos
@@ -650,7 +663,7 @@ static BOOL gpgMailWorks = NO;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         bundle = [NSBundle bundleForClass:[GPGMailBundle class]];
-        
+
         if ([bundle respondsToSelector:@selector(useGPGLocalizations)]) {
             [bundle useGPGLocalizations];
         }
@@ -686,23 +699,23 @@ static BOOL gpgMailWorks = NO;
 
 + (Class)resolveMailClassFromName:(NSString *)name {
     NSArray *prefixes = @[@"", @"MC", @"MF"];
-    
+
     // MessageWriter is called MessageGenerator under Mavericks.
     if([name isEqualToString:@"MessageWriter"] && !NSClassFromString(@"MessageWriter"))
         name = @"MessageGenerator";
-    
+
     __block Class resolvedClass = nil;
     [prefixes enumerateObjectsUsingBlock:^(NSString *prefix, NSUInteger idx, BOOL *stop) {
         NSString *modifiedName = [name copy];
         if([prefixes containsObject:[modifiedName substringToIndex:2]])
             modifiedName = [modifiedName substringFromIndex:2];
-        
+
         NSString *className = [prefix stringByAppendingString:modifiedName];
         resolvedClass = NSClassFromString(className);
         if(resolvedClass)
             *stop = YES;
     }];
-    
+
     return resolvedClass;
 }
 
@@ -730,7 +743,7 @@ static BOOL gpgMailWorks = NO;
     NSProcessInfo *info = [NSProcessInfo processInfo];
     if(![info respondsToSelector:@selector(isOperatingSystemAtLeastVersion:)])
         return NO;
-    
+
     NSOperatingSystemVersion requiredVersion = {10,11,0};
     return [info isOperatingSystemAtLeastVersion:requiredVersion];
 }
@@ -739,7 +752,7 @@ static BOOL gpgMailWorks = NO;
     NSProcessInfo *info = [NSProcessInfo processInfo];
     if(![info respondsToSelector:@selector(isOperatingSystemAtLeastVersion:)])
         return NO;
-    
+
     NSOperatingSystemVersion requiredVersion = {10,12,0};
     return [info isOperatingSystemAtLeastVersion:requiredVersion];
 }
@@ -748,7 +761,7 @@ static BOOL gpgMailWorks = NO;
     NSProcessInfo *info = [NSProcessInfo processInfo];
     if(![info respondsToSelector:@selector(isOperatingSystemAtLeastVersion:)])
         return NO;
-    
+
     NSOperatingSystemVersion requiredVersion = {10,13,0};
     return [info isOperatingSystemAtLeastVersion:requiredVersion];
 }
@@ -789,24 +802,24 @@ static BOOL gpgMailWorks = NO;
         else
             backEnd = [[object valueForKey:@"_documentEditor"] backEnd];
     }
-    
+
     //NSAssert(backEnd != nil, @"Couldn't find a way to access the ComposeBackEnd");
-    
+
     return backEnd;
 }
 
 + (NSError *)errorWithCode:(NSInteger)code userInfo:(nullable NSDictionary *)userInfo {
     NSString *errorDomain = [GPGMailBundle isMavericks] ? @"MCMailErrorDomain" : @"MFMessageErrorDomain";
-    
+
     NSError *mailError = nil;
     NSMutableDictionary *extendedUserInfo = [userInfo mutableCopy];
     extendedUserInfo[@"NSLocalizedDescription"] = userInfo[@"_MFShortDescription"];
     extendedUserInfo[@"NSLocalizedRecoverySuggestion"] = userInfo[@"NSLocalizedDescription"];
     mailError = [NSError errorWithDomain:errorDomain code:code userInfo:extendedUserInfo];
-    
+
     return mailError;
 }
-             
+
 #pragma mark Active Contract Helpers
 
 - (NSDictionary *)contractInformation {
@@ -814,7 +827,7 @@ static BOOL gpgMailWorks = NO;
         NSDictionary *activationInfo = [self fetchContractInformation];
         _activationInfo = activationInfo;
     }
-    
+
     return _activationInfo;
 }
 
@@ -847,7 +860,7 @@ static BOOL gpgMailWorks = NO;
 - (void)startSupportContractWizard {
     GMSupportPlanAssistantViewController *supportPlanAssistantViewController = [[GMSupportPlanAssistantViewController alloc] initWithNibName:@"GMSupportPlanAssistantView" bundle:[GPGMailBundle bundle]];
     supportPlanAssistantViewController.delegate = self;
-    
+
     GMSupportPlanAssistantWindowController *supportPlanAssistantWindowController = [[GMSupportPlanAssistantWindowController alloc] initWithSupportPlanActivationInformation:[self contractInformation]];
     supportPlanAssistantWindowController.delegate = self;
     supportPlanAssistantWindowController.contentViewController = supportPlanAssistantViewController;
@@ -856,6 +869,11 @@ static BOOL gpgMailWorks = NO;
 
     [self setIvar:@"Window" value:supportPlanAssistantWindowController];
     [self setIvar:@"View" value:supportPlanAssistantViewController];
+
+    if([self hasActivationCodeForAutomaticActivation]) {
+        NSDictionary *supportPlanActivationInformation = [self supportPlanInformationForAutomaticActivation];
+        [supportPlanAssistantWindowController performAutomaticSupportPlanActivationWithActivationCode:supportPlanActivationInformation[kGMSupportPlanInformationActivationCodeKey] email:supportPlanActivationInformation[kGMSupportPlanInformationActivationEmailKey]];
+    }
 }
 
 - (BOOL)shouldShowSupportPlanActivationDialog {
@@ -888,7 +906,51 @@ static BOOL gpgMailWorks = NO;
                  interval:NULL forDate:fromDateTime];
     [calendar rangeOfUnit:NSCalendarUnitDay startDate:&toDate
                  interval:NULL forDate:toDateTime];
-    
+
+    NSDateComponents *difference = [calendar components:NSCalendarUnitDay
+                                               fromDate:fromDate toDate:toDate options:0];
+    if([difference day] >= 3) {
+        [self saveDateActivationDialogWasLastShown];
+        return YES;
+    }
+    return NO;
+}
+
+- (void)saveDateActivationDialogWasLastShown {
+    [[NSUserDefaults standardUserDefaults] setObject:[NSDate date] forKey:@"__gme3_spd_last_shown_date"];
+}
+
+- (BOOL)shouldShowSupportPlanActivationDialog {
+    if(![self hasActiveContractOrActiveTrial]) {
+        [self saveDateActivationDialogWasLastShown];
+        return YES;
+    }
+    NSDictionary *contractInfo = [self contractInformation];
+    // Trial has never been started?
+    if(![contractInfo valueForKey:@"ActivationRemainingTrialDays"]) {
+        [self saveDateActivationDialogWasLastShown];
+        return YES;
+    }
+    NSDate *date = [[NSUserDefaults standardUserDefaults] objectForKey:@"__gme3_spd_last_shown_date"];
+    if(!date) {
+        [self saveDateActivationDialogWasLastShown];
+        return YES;
+    }
+    // Check if between date now and date last are 3 days.
+
+    NSDate *fromDateTime = date;
+    NSDate *toDateTime = [NSDate date];
+
+    NSDate *fromDate;
+    NSDate *toDate;
+
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+
+    [calendar rangeOfUnit:NSCalendarUnitDay startDate:&fromDate
+                 interval:NULL forDate:fromDateTime];
+    [calendar rangeOfUnit:NSCalendarUnitDay startDate:&toDate
+                 interval:NULL forDate:toDateTime];
+
     NSDateComponents *difference = [calendar components:NSCalendarUnitDay
                                                fromDate:fromDate toDate:toDate options:0];
     if([difference day] >= 3) {
@@ -903,11 +965,37 @@ static BOOL gpgMailWorks = NO;
 }
 
 - (void)checkSupportContractAndStartWizardIfNecessary {
-    if(![self hasActiveContract] && [self shouldShowSupportPlanActivationDialog]) {
-        [self startSupportContractWizard];
+    if(![self hasActiveContract]) {
+        if([self hasActivationCodeForAutomaticActivation] || [self shouldShowSupportPlanActivationDialog]) {
+            [self startSupportContractWizard];
+        }
     }
 }
-             
+
+- (BOOL)hasActivationCodeForAutomaticActivation {
+    return [self supportPlanInformationForAutomaticActivation] != nil;
+}
+
+- (NSDictionary *)supportPlanInformationForAutomaticActivation {
+    NSMutableDictionary *activationInformation = [NSMutableDictionary new];
+    NSString *activationCode = [[GPGOptions sharedOptions] valueForKey:kGMSupportPlanAutomaticActivationActivationCodeKey];
+    NSString *activationEmail = [[GPGOptions sharedOptions] valueForKey:kGMSupportPlanAutomaticActivationActivationEmailKey];
+    if(![activationCode length] || ![activationEmail length]) {
+        return nil;
+    }
+
+    activationInformation[kGMSupportPlanInformationActivationCodeKey] = activationCode;
+    activationInformation[kGMSupportPlanInformationActivationEmailKey] = activationEmail;
+
+    return activationInformation;
+}
+
+- (void *)removeSupportPlanInformationForAutomaticActivation {
+    [[GPGOptions sharedOptions] setValue:nil forKey:kGMSupportPlanAutomaticActivationActivationCodeKey];
+    [[GPGOptions sharedOptions] setValue:nil forKey:kGMSupportPlanAutomaticActivationActivationCodeKey];
+}
+
+
 #pragma mark -
 
 - (void)supportPlanAssistant:(NSWindowController *)windowController email:(NSString *)email activationCode:(NSString *)activationCode {
@@ -925,6 +1013,11 @@ static BOOL gpgMailWorks = NO;
                 [activationInfo setObject:email forKey:@"ActivationEmail"];
                 _activationInfo = (NSDictionary *)activationInfo;
                 [[NSNotificationCenter defaultCenter] postNotificationName:@"GMSupportPlanStateChangeNotification" object:self];
+
+                // Remove the info for automatic activation.
+                if([self hasActivationCodeForAutomaticActivation]) {
+                    [self removeSupportPlanInformationForAutomaticActivation];
+                }
             }
             else {
                 [(GMSupportPlanAssistantWindowController *)windowController activationDidFailWithError:finalError];
